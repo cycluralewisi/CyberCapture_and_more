@@ -1,0 +1,200 @@
+#Post-mapping working instruction
+#All commands and looping logic came directly from oem website of each toolset
+
+PROJECT/
+│
+├── bam_raw/            ← raw BAMs from BWA
+│
+├── bam_sorted/         ← coordinate-sorted BAMs
+│
+├── bam_dedup/          ← duplicate-removed BAMs
+│
+├── log_dedup/          ← dedup process logs
+│
+├── vcf/                ← variant calls
+│
+├── tmp_vcf/            ← normalized & filtered calls
+│
+├── consensus/          ← final genome FASTA
+│
+└── reference.fasta
+
+#set the directory structure
+
+mkdir bam_raw bam_sorted bam_dedup log_dedup vcf tmp_vcf consensus
+
+########## if only pe reads
+########## sort raw .bam files ##########
+
+for bam in bam_raw/*.bam; do
+  s=$(basename "$bam" .bam)
+
+  samtools sort -@60 -o "bam_sorted/${s}_sorted.bam" "$bam"
+  samtools index -@60 "bam_sorted/${s}_sorted.bam"
+
+done
+
+##########deduplicate##########
+
+for bam in bam_sorted/*_sorted.bam; do
+  s=$(basename "$bam" _sorted.bam)
+
+  samtools sort -n -@60 -o "bam_dedup/${s}.nsort.bam" "$bam"
+  samtools fixmate -m -@60 "bam_dedup/${s}.nsort.bam" "bam_dedup/${s}.fixmate.bam"
+  samtools sort -@60 -o "bam_dedup/${s}.coord.bam" "bam_dedup/${s}.fixmate.bam"
+  samtools markdup -r -s -@60 "bam_dedup/${s}.coord.bam" "bam_dedup/${s}_dedup.bam" \
+  2> "logs_dedup/${s}.markdup.log"
+  samtools index -@60 "bam_dedup/${s}_dedup.bam"
+
+  rm -f \
+     "bam_dedup/${s}.nsort.bam" \
+     "bam_dedup/${s}.fixmate.bam" \
+     "bam_dedup/${s}.coord.bam"
+done
+
+########## if se and pe reads
+########## for pe reads, do the pe only command structure
+########## sort se .bam files ##########
+
+mkdir bam_se_dedup logs_se_dedup
+
+for bam in bam_se/*.bam; do
+  s=$(basename "$bam" .bam)
+
+  samtools sort -@60 -o "bam_se_dedup/${s}.coord.bam" "$bam"
+  samtools markdup -r -@60 \
+    "bam_se_dedup/${s}.coord.bam" \
+    "bam_se_dedup/${s}_dedup.bam" \
+    2> "logs_se_dedup/${s}.markdup.log"
+  samtools index -@60 "bam_se_dedup/${s}_dedup.bam"
+
+  rm -f "bam_se_dedup/${s}.coord.bam"
+done
+
+#merge se and pe
+
+#########call variant##########
+
+mkdir vcf logs_vcf
+
+for bam in bam_dedup/*_dedup.bam; do
+  s=$(basename "$bam" _dedup.bam)
+
+  bcftools mpileup \
+    --threads 15 \
+    -Ou \
+    -f ref_draco.fasta \
+    -q 10 -Q 10 \
+    -d 10000 \
+    -a FORMAT/DP,AD,SP,ADR,ADF \
+    "$bam" \
+    2> logs_vcf/${s}.mpileup.log \
+  | bcftools call \
+      -m -v \
+      -f GQ,GP \
+      -Oz -o vcf/${s}.vcf.gz \
+      2> logs_vcf/${s}.call.log
+
+  bcftools index -t vcf/${s}.vcf.gz
+done
+
+##########normalize##########
+
+for vcf in vcf/*.vcf.gz; do
+  s=$(basename "$vcf" .vcf.gz)
+
+  bcftools norm -f ref.fasta "$vcf" -Ob -o "tmp_vcf/${s}.norm.bcf"
+  bcftools filter --IndelGap 1 -e 'QUAL<20' \
+    "tmp_vcf/${s}.norm.bcf" -Ob -o "tmp_vcf/${s}.norm.flt.bcf"
+  bcftools index tmp_vcf/${s}.norm.flt.bcf
+done
+
+#########vcf filter##########
+
+mkdir vcf_gtmasked
+
+for bcf in tmp_vcf/*.norm.flt.bcf; do
+  s=$(basename "$bcf" .norm.flt.bcf)
+
+  bcftools filter \
+    -s LowConfGT \
+    -S . \
+    -e 'FMT/DP<2 || FMT/GQ<10' \
+    "$bcf" -Oz -o vcf_gtmasked/${s}.gtmasked.vcf.gz
+
+  bcftools index -t vcf_gtmasked/${s}.gtmasked.vcf.gz
+done
+
+##########
+
+mkdir vcf_filtered
+
+for vcf in vcf_gtmasked/*.gtmasked.vcf.gz; do
+  s=$(basename "$vcf" .gtmasked.vcf.gz)
+
+  bcftools view \
+    -i 'QUAL>=20 && F_MISSING<=0.8' \
+    "$vcf" -Oz -o vcf_filtered/${s}.filtered.vcf.gz
+
+  bcftools index -t vcf_filtered/${s}.filtered.vcf.gz
+done
+
+##########call consensus with masking##########
+
+for vcf in vcf_filtered/*.filtered.vcf.gz; do
+  s=$(basename "$vcf" .filtered.vcf.gz)
+  bam="bam_dedup/${s}_dedup.bam"
+
+  bcftools consensus \
+    -f ref.fasta \
+    -I \
+    --mask <(samtools depth -aa "$bam" | awk '$3==0 {print $1"\t"$2}') \
+    --mask-with N \
+    "$vcf" \
+  > consensus/${s}.fa
+done
+
+##########alternative masking method########## 
+
+###dp mask
+
+for bam in bam_dedup/*_dedup.bam; do
+  s=$(basename "$bam" _dedup.bam)
+
+  samtools depth -aa "$bam" \
+  | awk '$3<4 {print $1"\t"($2-1)"\t"$2}' \
+  | sort -k1,1 -k2,2n \
+  | bedtools merge -i - \
+  > "dp/${s}_dp.bed"
+done
+
+###gq mask
+
+for vcf in vcf/*.vcf.gz; do
+  s=$(basename "$vcf" .vcf.gz)
+
+  bcftools query -f'%CHROM\t%POS0\t%POS\t%GQ\n' "$vcf" \
+  | awk '$4<20 {print $1"\t"$2"\t"$3}' \
+  > "gq/${s}_gq.bed"
+done
+
+###merge mask files
+
+for bed in dp/*_dp.bed; do
+  s=$(basename "$bed" _dp.bed)
+
+  cat "dp/${s}_dp.bed" "gq/${s}_gq.bed" | sort -k1,1 -k2,2n \
+  | bedtools merge -i - \
+  > "mask/${s}_mask.bed"
+done
+
+###call consensus
+
+for bcf in tmp_vcf/*.norm.flt.bcf; do
+  s=$(basename "$bcf" .norm.flt.bcf)
+
+  cat ref.fasta \
+  | bcftools consensus -m "mask/${s}_mask.bed" "$bcf" \
+  > "consensus/${s}.fa"
+done
+
