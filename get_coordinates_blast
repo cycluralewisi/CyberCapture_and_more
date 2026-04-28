@@ -1,4 +1,4 @@
-########## prepare .bed coordinate files with blast ##########
+########## prepare .bed coordinates files with blast ##########
 ########## this pipe assumes regions of interest stored in one standard .fasta file, and a reference genome to blast search against ##########
 
 ########## directory setting ##########
