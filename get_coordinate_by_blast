@@ -58,4 +58,8 @@ echo -e "qseqid\tsseqid\tsstart\tsend\tbitscore\tpident\tlength\tevalue" > merge
 
 cat blast_results/*.tsv >> merged_coordinates/merged_coordinates.tsv
 
+########## convert .tsv to .bed coordinates ##########
+
+awk -F'\t' 'BEGIN {OFS="\t"} {if ($3 < $4) {s=$3; e=$4; strand="+"} else {s=$4; e=$3; strand="-"} print $2, s-1, e, $1, $5, strand}' merged_coordinates.tsv > merged_coordinates.bed
+
 
