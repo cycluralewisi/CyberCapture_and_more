@@ -1,0 +1,66 @@
+
+########## post-mapping .bam file process ##########
+########## this pipe assumes post-mapping qc was done properly ##########
+
+########## directory setting ##########
+
+mkdir bam_cleaned logs_dedup bam_merged merge_log missing
+
+PROJECT/
+│
+├── bam_se_raw/         # raw pe .bams from mapper
+│
+├── bam_pe_raw/         # raw se .bams from mapper
+│
+├── bam_cleaned/        # duplicate-removed sorted bams
+│
+├── logs_dedup/         # dedup process logs
+│
+├── bam_merged/         # merged bams
+│
+├── missing/            
+│
+└── merge_log/          # merge process log
+
+
+########## if have both pe and se .bam, merge them with this loop ##########
+########## if have only pe .bam, skip this loop
+
+for pe in bam_pe_raw/*.bam; do
+  base=$(basename "$pe" .bam)  
+  se="bam_se_raw/${base}.bam"
+  out="bam_merged/${base}.bam"
+
+  if [[ -f "$se" ]]; then
+    echo "Merging ${base}"
+
+    samtools merge \
+      -@ 15 \
+      -o "$out" \
+      "$pe" "$se" \
+      2> "merge_log/${base}.merge.log"
+
+  else
+    echo "SKIP (no SE match): ${base}" | tee -a missing/missing_se.log
+  fi
+done
+
+########## name sort, deduplicate, coordinate sort ##########
+
+for bam in bam_pe_raw/*.bam; do
+  s=$(basename "$bam" .bam)
+
+  samtools sort -n -@15 -o "bam_cleaned/${s}.nsort.bam" "$bam"
+  samtools fixmate -m -@15 "bam_cleaned/${s}.nsort.bam" "bam_cleaned/${s}.fixmate.bam"
+  samtools sort -@15 -o "bam_cleaned/${s}.coord.bam" "bam_cleaned/${s}.fixmate.bam"
+  samtools markdup -r -s -@15 "bam_cleaned/${s}.coord.bam" "bam_cleaned/${s}_cleaned.bam" \
+  2> "logs_dedup/${s}.markdup.log"
+  samtools index -@15 "bam_cleaned/${s}_cleaned.bam"
+
+  rm -f \
+     "bam_cleaned/${s}.nsort.bam" \
+     "bam_cleaned/${s}.fixmate.bam" \
+     "bam_cleaned/${s}.coord.bam"
+done
+
+
