@@ -13,9 +13,13 @@ PROJECT/
 │
 ├── logs_vcf/       # variant call logs
 │
+├── vcf_gtmasked/   # tmp files
+│
+├── vcf_filtered/   # filtered .vcf files
+│
 └── reference.fasta
 
-mkdir vcf logs_vcf
+mkdir vcf logs_vcf tmp_vcf vcf_gtmasked vcf_filtered
 
 ########## call variant with bcftools ##########
 
@@ -40,7 +44,7 @@ for bam in bam_cleaned/*_cleaned.bam; do
   bcftools index -t vcf/${s}.vcf.gz
 done
 
-##########normalize##########
+########## normalize ##########
 
 for vcf in vcf/*.vcf.gz; do
   s=$(basename "$vcf" .vcf.gz)
@@ -51,9 +55,7 @@ for vcf in vcf/*.vcf.gz; do
   bcftools index tmp_vcf/${s}.norm.flt.bcf
 done
 
-#########vcf filter##########
-
-mkdir vcf_gtmasked
+########## vcf filters ##########
 
 for bcf in tmp_vcf/*.norm.flt.bcf; do
   s=$(basename "$bcf" .norm.flt.bcf)
@@ -69,8 +71,6 @@ done
 
 ##########
 
-mkdir vcf_filtered
-
 for vcf in vcf_gtmasked/*.gtmasked.vcf.gz; do
   s=$(basename "$vcf" .gtmasked.vcf.gz)
 
@@ -81,16 +81,16 @@ for vcf in vcf_gtmasked/*.gtmasked.vcf.gz; do
   bcftools index -t vcf_filtered/${s}.filtered.vcf.gz
 done
 
-##########merge vcf##########
+########## merge vcf ##########
 
 ls vcf_filtered/*.filtered.vcf.gz > vcf_list.txt
 
-bcftools merge -l vcf_list.txt -Oz -o pero_full.vcf.gz
-bcftools index -t pero_full.vcf.gz
+bcftools merge -l vcf_list.txt -Oz -o full_name.vcf.gz
+bcftools index -t full_name.vcf.gz
 
-##########snps filter##########
+########## snps filter ##########
 
 bcftools view -v snps -m2 -M2 \
   -i 'F_MISSING < 0.1 && MAF > 0.05' \
-  pero_full.vcf.gz -Oz -o pero_filtered.vcf.gz
+  full_name.vcf.gz -Oz -o full_name.vcf.gz
 
