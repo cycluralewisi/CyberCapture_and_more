@@ -1,0 +1,65 @@
+########## generate consensus sequence with ANGSD ##########
+########## this pipe assumes .bam files are handled properly ##########
+
+########## directory setting ##########
+
+##### if ANGSD is in enviroment #####
+
+Project_Root/
+│
+├── bam_cleaned/  
+│
+└── consensus/             
+
+##### if ANGSD is installed in directory #####
+
+Project_Root/
+│
+├── angsd/                  
+│   
+├── bam_cleaned/  
+│
+└── consensus/  
+
+########## generate consensus genome sequence via ANGSD ##########
+
+##### if ANGSD is in enviroment #####
+
+for f in bam_cleaned/*_cleaned.bam; do \
+    NAME=$(basename "$f" _cleaned.bam); \
+    angsd -i "$f" \
+          -P 15 \
+          -out "consensus/${NAME}" \
+          -doFasta 4 \
+          -doCounts 1 \
+          -minQ 20 \
+          -minMapQ 30 \
+          -uniqueOnly 1 \
+          -remove_bads 1 \
+          -setMinDepth 3 \
+          -setMaxDepth 10000 \
+          -iupacRatio 0.3 \
+          -basesPerLine 60 && \
+    gunzip -f "consensus/${NAME}.fa.gz"; \
+done
+
+##### if ANGSD is installed in directory #####
+
+for f in bam_cleaned/*_cleaned.bam; do \
+    NAME=$(basename "$f" _cleaned.bam); \
+    angsd/angsd/angsd/ -i "$f" \
+          -P 15 \
+          -out "consensus/${NAME}" \
+          -doFasta 4 \
+          -doCounts 1 \
+          -minQ 20 \
+          -minMapQ 30 \
+          -uniqueOnly 1 \
+          -remove_bads 1 \
+          -setMinDepth 3 \
+          -setMaxDepth 10000 \
+          -iupacRatio 0.3 \
+          -basesPerLine 60 && \
+    gunzip -f "consensus/${NAME}.fa.gz"; \
+done
+
