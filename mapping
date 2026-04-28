@@ -1,0 +1,57 @@
+########## short read mapping via bwa-mem ##########
+########## this pipe assumes raw reads were cleaned properly ##########
+
+########## directory setting ##########
+
+PROJECT/
+│
+├── reference.fasta   
+├── pe/
+├── se/
+├── bam_pe_raw/
+├── bam_se_raw/
+├── logs_pe/
+└── logs_se/
+
+mkdir pe se bam_pe_raw bam_se_raw logs_pe logs_se
+
+########## index reference genome ##########
+
+bwa index reference.fasta
+
+samtools faidx reference.fasta
+
+samtools dict reference.fasta -o reference.dict
+
+########## mapping loop ##########
+
+########## for pe reads
+
+for r1 in pe/*_R1.fastq.gz; do
+  s=$(basename "$r1" _R1.fastq.gz)
+  r2="pe/${s}_R2.fastq.gz"
+  
+  echo "[$(date)] Mapping $s ..."
+  
+  bwa mem -t 15 reference.fasta "$r1" "$r2" \
+    2> logs_pe/${s}_bwa.log | \
+  samtools view -@ 15 -b -o bam_pe_raw/${s}.bam -
+  
+  echo "[$(date)] Done $s ✅"
+done
+
+########## for se reads
+
+for fq in se/*_SE.fastq.gz; do
+  s=$(basename "$fq" _SE.fastq.gz)
+  
+  echo "[$(date)] Mapping $s ..."
+  
+  bwa mem -t 15 reference.fasta "$fq" \
+    2> logs_se/${s}_bwa.log | \
+  samtools view -@ 15 -b -o bam_se_raw/${s}.bam -
+  
+  echo "[$(date)] Done $s ✅"
+done
+
+
