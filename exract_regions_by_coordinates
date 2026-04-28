@@ -1,5 +1,5 @@
-########## extract regions of interests with .bed coordinate ##########
-########## this pipe assumes .bed coordinate file is ready along with consensus genomes in .fasta format ##########
+########## extract regions of interests with .bed coordinates ##########
+########## this pipe assumes .bed coordinates file is ready along with consensus genomes in .fasta format ##########
 ########## CYBER-CAPTURE! ##########
 
 ########## directory setting ##########
@@ -11,7 +11,7 @@ Project/
 ├── coordinates.bed             
 └── relec_fasta/               
 
-########## extract locus/loci with coordinate ##########
+########## extract locus/loci with coordinates ##########
 
 for fa in consensus/*.fasta; do
   base=$(basename "$fa" .fasta)
