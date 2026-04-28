@@ -1,0 +1,61 @@
+########## prepare .bed coordinate files with blast ##########
+########## this pipe assumes regions of interest stored in one standard .fasta file, and a reference genome to blast search against ##########
+
+########## directory setting ##########
+
+########## for splitting regions of interest 
+
+mkdir split_loci
+
+Project/
+├── loci_file.fasta  
+└── split_loci/
+
+########## split combined loci file
+
+seqkit split loci_file.fasta --by-id --out-dir split_loci
+
+########## the following step assumes each region of interest is stored in one standard .fasta file ##########
+
+########## directoriey setting for blast search individual sequence ##########
+
+mkdir db blast_results merged_coordinates
+
+project/
+├── reference.fasta
+├── db/
+├── split_loci/
+│   ├── loci_1.fasta
+│   ├── loci_2.fasta
+│   └── ...
+├── merged_coordinates/
+└── blast_results/
+    
+########### build blast db ##########
+
+makeblastdb -in reference.fasta -dbtype nucl -parse_seqids -out db/ref_db
+
+########## blast search loop
+
+for q in split_loci/*.fasta; do
+  base=$(basename "$q" .fasta)
+  echo ">>> Running BLAST for $base ..."
+  blastn -task dc-megablast \
+         -db db/ref_db \
+         -query "$q" \
+         -evalue 1e-20 \
+         -word_size 11 \
+         -max_target_seqs 1 \
+         -max_hsps 1 \
+         -num_threads 15 \
+         -outfmt "6 qseqid sseqid sstart send bitscore pident length evalue" \
+         -out blast_results/${base}.tsv
+done
+
+########## merge .tsv files ##########
+
+echo -e "qseqid\tsseqid\tsstart\tsend\tbitscore\tpident\tlength\tevalue" > merged_coordinates/merged_coordinates.tsv
+
+cat blast_results/*.tsv >> merged_coordinates/merged_coordinates.tsv
+
+
