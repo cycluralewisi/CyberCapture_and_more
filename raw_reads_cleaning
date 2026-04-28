@@ -1,0 +1,39 @@
+########## raw reads cleaning with fastp ##########
+########## this pipe assumes qc were done properly ########## 
+
+########## directory setting ##########
+
+PROJECT/
+│
+├── data/             
+│
+├── cleaned/          
+│
+└── logs/              
+
+mkdir data cleaned logs   
+
+##########clean raw reads with fastp##########
+
+for r1 in data/*_R1.fastq.gz; do
+    r2="${r1/_R1./_R2.}"
+    sample=$(basename "${r1%_R1.fastq.gz}")
+
+    fastp -i "$r1" -I "$r2" \
+          -o "cleaned/${sample}_R1.clean.fq.gz" \
+          -O "cleaned/${sample}_R2.clean.fq.gz" \
+          --detect_adapter_for_pe \
+          --dedup \
+          --correction \
+          --trim_poly_g \
+          --trim_poly_x \
+          --cut_right \
+          --cut_window_size 4 \
+          --cut_mean_quality 20 \
+          --length_required 30 \
+          --thread 16 \
+          --html "logs/${sample}.html" \
+          --json "logs/${sample}.json"
+done
+
+
